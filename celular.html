@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Seguridad: la página solo puede hablar con Google (formulario y Apps Script) y cargar la tipografía. Nada más. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; connect-src https://docs.google.com https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Queremos conocerte · celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Idea: la pizarra en versión vertical, una pregunta por pantalla; cada toque deja caer tu pelotita con pop y se envía al instante. */
+  :root {
+    --wall: #F3ECE1;
+    --ink: #2B2420;
+    --muted: #5B5147;
+    --line: #D9CDB8;
+    --edge: #8F857A;   /* bordes de botones: contraste 3:1 con el fondo (WCAG 1.4.11) */
+    --panel: #FFFDF8;
+    --pink: #ED1E79;
+    --font: "Raleway", "Segoe UI", system-ui, sans-serif;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input { -webkit-user-select: text; user-select: text; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--wall); color: var(--ink); font-family: var(--font); font-variant-numeric: lining-nums; font-size: 17px; line-height: 1.35; }
+  .app {
+    max-width: 480px; margin: 0 auto; min-height: 100vh; min-height: 100dvh;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 18px calc(108px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  header { text-align: center; display: flex; flex-direction: column; gap: 4px; }
+  h1 { margin: 0; font-weight: 800; font-size: 30px; line-height: 1.05; }
+  .lede { margin: 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+  .progress { display: flex; gap: 6px; justify-content: center; margin-top: 6px; }
+  .progress span { width: 28px; height: 6px; border-radius: 3px; background: var(--line); transition: background 200ms ease; }
+  .progress span.on { background: var(--ink); }
+  .me { display: flex; justify-content: center; min-height: 28px; }
+  .me-chip { display: none; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 4px 12px 4px 6px; border-radius: 999px; background: var(--panel); border: 2px solid var(--line); }
+  .me-chip.on { display: inline-flex; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--c); flex: none; }
+
+  .step { display: none; flex-direction: column; gap: 14px; animation: in 280ms var(--ease-out); }
+  .step.on { display: flex; }
+  @keyframes in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .step h2 { margin: 0; font-weight: 800; font-size: 26px; line-height: 1.12; text-wrap: balance; }
+  .step .hint { margin: -6px 0 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+
+  /* Opciones con esfera o frasco */
+  [hidden] { display: none !important; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Edad: una lista compacta, para que las 5 opciones se vean sin desplazarse (la última quedaba tapada por la barra) */
+  #ages { grid-template-columns: 1fr; gap: 10px; }
+  #ages .opt { flex-direction: row; justify-content: space-between; text-align: left; padding: 6px 16px 6px 14px; }
+  #ages .opt-label { font-size: 18px; }
+  #ages .opt canvas { width: 52px; max-width: 52px; flex: none; }
+  .opt {
+    font: inherit; color: inherit; cursor: pointer; text-align: center;
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 18px; padding: 10px 6px 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    transition: border-color 160ms ease, transform 140ms var(--ease-out);
+  }
+  .opt:active { transform: scale(0.97); }
+  .opt[aria-pressed="true"] { border-color: var(--sel, var(--ink)); box-shadow: inset 0 0 0 2px var(--sel, var(--ink)); }
+  .opt canvas { width: 100%; max-width: 120px; aspect-ratio: 1; display: block; }
+  .opt.jar canvas { max-width: 70px; aspect-ratio: 0.62; }
+  .opt-label { font-weight: 700; font-size: 16px; line-height: 1.15; display: inline-flex; align-items: center; gap: 6px; justify-content: center; min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+  .opt { min-width: 0; }
+  .opt:focus-visible, .btn:focus-visible, input:focus-visible { outline: 3px solid #3a57e8; outline-offset: 3px; }
+  .interests { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .interests .opt { flex-direction: row; text-align: left; padding: 10px 12px; gap: 10px; align-items: center; }
+  .interests .opt canvas { width: 46px; flex: none; }
+  .interests .opt-label { justify-content: flex-start; font-size: 15px; }
+
+  /* Idea */
+  .idea { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .idea canvas { width: 150px; height: 190px; }
+  .idea input { width: 100%; font: inherit; font-size: 18px; font-weight: 500; padding: 14px 16px; border: 2px solid var(--ink); border-radius: 14px; background: var(--panel); color: var(--ink); }
+  .vote { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding-top: 16px; border-top: 2px solid var(--line); }
+  .vote h3 { margin: 0; font-weight: 800; font-size: 22px; }
+  .vote .hint { margin: -4px 0 4px; }
+  .bulbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; }
+  .bulb { position: relative; display: flex; flex-direction: column; align-items: center; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .bulb .glass {
+    width: 100%; aspect-ratio: 1; padding: 8px; overflow: hidden;
+    border-radius: 50% 50% 46% 46% / 46% 46% 54% 54%;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    font-size: 13px; font-weight: 700; line-height: 1.1; hyphens: auto; overflow-wrap: anywhere;
+    box-shadow: inset -5px -6px 0 rgba(43,36,32,0.13), inset 5px 5px 0 rgba(255,255,255,0.35), 0 0 14px rgba(255,204,51,0.55);
+  }
+  .bulb .cap { width: 36%; height: 12px; margin-top: -3px; border-radius: 0 0 6px 6px; background: repeating-linear-gradient(#8A8178 0 3px, #5B5147 3px 5px); }
+  .bulb .votes {
+    position: absolute; top: -6px; right: -4px; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel); border: 2px solid var(--ink); font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums lining-nums;
+  }
+  .bulb[aria-pressed="true"] .votes { background: var(--ink); color: #fff; }
+  .bulb .votes.bump { animation: bump 320ms var(--ease-out); }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  .bulb.mine .glass { outline: 3px dashed var(--ink); outline-offset: 3px; }
+  .sent-ideas { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .sent-ideas span { padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; background: var(--c); color: var(--tc, var(--ink)); }
+
+  /* Final */
+  .done { text-align: center; align-items: center; }
+  .done canvas { width: 220px; height: 220px; }
+  .done p { margin: 0; font-size: 18px; font-weight: 500; color: var(--muted); max-width: 30ch; }
+
+  /* Barra de abajo */
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(rgba(243,236,225,0), var(--wall) 30%);
+  }
+  .bar-in { max-width: 444px; margin: 0 auto; display: flex; gap: 10px; }
+  .btn {
+    font: inherit; font-weight: 800; font-size: 17px; cursor: pointer; border-radius: 999px; padding: 14px 20px;
+    border: 2px solid var(--ink); background: var(--panel); color: var(--ink);
+    transition: transform 140ms var(--ease-out), opacity 160ms ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--ink); color: #fff; flex: 1; }
+  .btn[disabled] { opacity: 0.55; cursor: default; }
+  .btn[hidden] { display: none; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
+    opacity: 0; transition: opacity 200ms ease; pointer-events: none; z-index: 9; white-space: nowrap;
+  }
+  .toast.on { opacity: 0.92; }
+  .testmode { text-align: center; font-size: 12px; color: var(--muted); margin: 0; }
+
+  /* Pantalla del número: lo primero que se ve; el número es el que entregan en la entrada */
+  .gate { display: none; flex-direction: column; gap: 14px; animation: in 280ms var(--ease-out); }
+  .needs-number .gate { display: flex; }
+  .needs-number .step, .needs-number .progress, .needs-number .me, .needs-number .bar { display: none !important; }
+  .gate h2 { margin: 0; font-weight: 800; font-size: 26px; line-height: 1.12; text-wrap: balance; }
+  .gate .hint { margin: -6px 0 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+  .gate input { width: 100%; font: inherit; font-size: 30px; font-weight: 800; text-align: center; letter-spacing: 0.08em; padding: 16px; border: 2px solid var(--ink); border-radius: 14px; background: var(--panel); color: var(--ink); }
+  .gate .err { margin: 0; min-height: 1.35em; color: #B3261E; font-weight: 700; font-size: 15px; }
+  .gate .btn { width: 100%; }
+  .numline { margin: 0; text-align: center; font-weight: 700; font-size: 14px; color: var(--muted); }
+  .numline:empty { display: none; }
+  #estado:not(:empty)::before { content: ' · '; }
+  #estado.fallo { color: #B3261E; }
+  .gate .aviso { margin: 0; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.35; }
+
+  @media (max-width: 359px) { .interests { grid-template-columns: minmax(0, 1fr); } }
+
+  @media (prefers-reduced-motion: reduce) { .step, .gate { animation: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Queremos conocerte</h1>
+    <p class="lede">Oficina de la Juventud de Providencia. Diseñemos juntos espacios para ti.</p>
+    <div class="progress" id="progress" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+  </header>
+  <p class="numline" id="numline"><span id="numtxt"></span><span id="estado"></span></p>
+  <section class="gate" id="gate" aria-labelledby="qg">
+    <h2 id="qg">¿Cuál es tu número?</h2>
+    <p class="hint">Es el que te entregaron en la entrada. Con él guardamos tus respuestas.</p>
+    <label class="hint" for="gate-num" style="margin:0">Tu número</label>
+    <input id="gate-num" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Ej: 128" aria-describedby="gate-err">
+    <p class="err" id="gate-err" role="alert"></p>
+    <button class="btn primary" id="gate-go" type="button">Empezar</button>
+    <p class="aviso">Usamos tu número para saber quiénes participaron. En la pantalla grande solo se ven cantidades, nunca nombres ni números.</p>
+  </section>
+  <div class="me"><span class="me-chip" id="me-chip"><span class="dot" id="me-dot"></span><span id="me-text"></span></span></div>
+
+  <section class="step" data-step="0" aria-labelledby="q0">
+    <h2 id="q0">¿Cuántos años tienes?</h2>
+    <p class="hint">Tu edad te da un color. Ese color te acompaña en todas las respuestas.</p>
+    <div class="grid" id="ages"></div>
+  </section>
+
+  <section class="step" data-step="1" aria-labelledby="q1">
+    <h2 id="q1">¿Cuál es tu vínculo con Provi?</h2>
+    <p class="hint">Puedes elegir más de uno.</p>
+    <div class="grid three" id="links"></div>
+    <div class="grid interests" id="links-adult" hidden></div>
+  </section>
+
+  <section class="step" data-step="2" aria-labelledby="q2">
+    <h2 id="q2">¿Qué intereses tienes?</h2>
+    <p class="hint">Elige todos los que quieras.</p>
+    <div class="grid interests" id="interests"></div>
+  </section>
+
+  <section class="step" data-step="3" aria-labelledby="q3">
+    <h2 id="q3">¿Cómo te contactamos?</h2>
+    <p class="hint">Puedes elegir más de uno.</p>
+    <div class="grid" id="contact"></div>
+  </section>
+
+  <section class="step" data-step="4" aria-labelledby="q4">
+    <h2 id="q4">Compártenos tu idea</h2>
+    <p class="hint">Un taller, una actividad, un espacio que te gustaría tener. Escribe solo la idea: sin nombres ni datos personales.</p>
+    <div class="idea">
+      <canvas id="bulb" width="300" height="380" aria-hidden="true"></canvas>
+      <label class="hint" for="idea-text" style="align-self:flex-start;margin:0">Tu idea</label>
+      <input id="idea-text" type="text" maxlength="30" autocomplete="off" enterkeyhint="send" placeholder="Ej: taller de muralismo">
+      <button class="btn" id="idea-send" type="button" style="width:100%">Encender mi idea</button>
+      <div class="sent-ideas" id="sent-ideas"></div>
+    </div>
+    <div class="vote">
+      <h3>Vota por otras ideas</h3>
+      <p class="hint" id="vote-hint">Toca una ampolleta para votar por ella. Puedes votar por todas las que quieras.</p>
+      <div class="bulbs" id="bulbs"></div>
+    </div>
+  </section>
+
+  <section class="step done" data-step="5" aria-labelledby="q5">
+    <h2 id="q5">¡Gracias!</h2>
+    <canvas id="final" width="440" height="440" aria-hidden="true"></canvas>
+    <p>Tus respuestas ya están en la pantalla grande. Acércate a verlas caer.</p>
+  </section>
+
+  <p class="testmode" id="testmode"></p>
+</div>
+
+<div class="bar"><div class="bar-in">
+  <button class="btn" id="back" type="button">Atrás</button>
+  <button class="btn primary" id="next" type="button">Siguiente</button>
+</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  /* ---------- Conexión con el Formulario de Google ----------
+     Cada toque envía una fila al formulario, al instante. Campos (respuesta corta):
+     id (persona), edad, pregunta, respuesta, accion ("agrega" o "quita").
+     Completar con la dirección del formulario y los códigos entry.XXXX del enlace "rellenado previamente". */
+  var FORM = {
+    url: 'https://docs.google.com/forms/d/e/1FAIpQLScy8XMtXpDrcEKcZ0byvZny8M43rgohpFczMvMc-HVzAWa1hA/formResponse',
+    // Para ver las ideas de los demás. Lo recomendado: la dirección /exec de la aplicación web de Apps Script
+    // (apps-script/Codigo.gs), que entrega solo un resumen y deja la planilla privada.
+    // Alternativa menos privada: el CSV de la planilla (Archivo > Compartir > Publicar en la web > CSV).
+    sheetCsv: 'https://script.google.com/macros/s/AKfycbzfUGbIhXSclsD40bGWJd-UrzIoZb6RrtwGxaZo9YyqdKijG7Mlsml5lK2WO2G4MY1M/exec',
+    fields: { id: 'entry.943718185', edad: 'entry.1895061419', pregunta: 'entry.2085574569', respuesta: 'entry.511719771', accion: 'entry.2077465532' }
+  };
+
+  var AGES = [
+    { label: '15–17', txt: '15–17 años', color: '#F7931E', name: 'naranjo' },
+    { label: '18–21', txt: '18–21 años', color: '#E01A72', name: 'rosado' },
+    { label: '22–25', txt: '22–25 años', color: '#8BB844', name: 'verde' },
+    { label: '26–29', txt: '26–29 años', color: '#3E96B4', name: 'azul' },
+    { label: '30 o más', txt: '30 años o más', color: '#662D91', name: 'morado' }
+  ];
+  // Texto sobre cada color: el que tenga más contraste (mínimo 4,5:1, WCAG 1.4.3).
+  function lum(h) { var c = [1, 3, 5].map(function (i) { var v = parseInt(h.substr(i, 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+  function inkOn(bg) { var l = lum(bg); return (l + 0.05) / (lum('#2B2420') + 0.05) >= 1.05 / (l + 0.05) ? '#2B2420' : '#fff'; }
+  AGES.forEach(function (a) { a.fg = inkOn(a.color); });
+  var AGE_IX = AGES.map(function (a, i) { return i; });
+  var LINKS = ['Vivo', 'Estudio', 'Trabajo'];
+  // Quienes tienen 30 años o más responden otra pregunta de vínculo: se guarda aparte ('vinculo_juventud'), sin mezclarla con la de los jóvenes.
+  var ADULT_IX = 4;
+  var ADULT_LINKS = ['Madre, padre o cuidador/a', 'Abuelo/a', 'Hermano/a', 'Profesor/a o docente', 'Trabajo con jóvenes',
+                     'Autoridad o funcionario/a', 'Otro'];
+  var INTERESTS = ['Salud mental y bienestar', 'Voluntariado y participación juvenil', 'Espacios de recreación',
+                   'Educación y formación', 'Herramientas para la vida independiente', 'Medio ambiente'];
+  var CONTACT = ['WhatsApp', 'Correo electrónico', 'Instagram', 'Llamada telefónica'];
+  // Confeti de fondo: las mismas proporciones que muestra la pantalla grande.
+  var BASE = {
+    edad: [311, 178, 47, 56, 0],
+    vinculo: { 'Vivo': [65, 47, 17, 17], 'Estudio': [292, 159, 19, 12], 'Trabajo': [2, 7, 15, 31] }
+  };   // solo datos reales de las encuestas anteriores: la forma de contacto y las ideas no se inventan
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Número de esta persona: el que le entregaron en la entrada. Se escribe en la primera pantalla
+  // o llega en el enlace (celular.html?n=128). Es lo único que la identifica: nombre y contacto no pasan por aquí.
+  function cleanNum(v) { var n = parseInt(String(v || '').replace(/\D/g, '').slice(0, 6), 10); return n > 0 ? String(n) : ''; }
+  var pid = '';
+  // Cada celular tiene un código propio (al azar, sin datos personales). La planilla lo anota la primera vez que se usa un número:
+  // ese número queda para ese celular y no se puede usar en otro.
+  function deviceId() {
+    var d = ''; try { d = localStorage.getItem('qc-dev') || ''; } catch (e) {}
+    if (!/^[a-z0-9]{8,40}$/.test(d)) {
+      var abc = 'abcdefghijklmnopqrstuvwxyz0123456789'; d = '';
+      try { var r = new Uint8Array(16); crypto.getRandomValues(r); for (var i = 0; i < r.length; i++) d += abc[r[i] % 36]; }
+      catch (e) { d = ''; for (var j = 0; j < 16; j++) d += abc[Math.floor(Math.random() * 36)]; }
+      try { localStorage.setItem('qc-dev', d); } catch (e) {}
+    }
+    return d;
+  }
+  var DEV = deviceId();
+  function claim(n, done) {   // done(ok, motivo). Sin señal no se puede verificar: se deja entrar
+    if (!FORM.sheetCsv) { done(true, 'sin_verificar'); return; }
+    var fin = false, tm = setTimeout(function () { end(true, 'sin_senal'); }, 8000);
+    function end(ok, m) { if (fin) return; fin = true; clearTimeout(tm); done(ok, m); }
+    fetch(FORM.sheetCsv + (FORM.sheetCsv.indexOf('?') < 0 ? '?' : '&') + 'reclamar=' + encodeURIComponent(n) + '&d=' + encodeURIComponent(DEV) + '&t=' + Date.now())
+      .then(function (r) { return r.json(); }).then(function (j) { end(!!j.ok, j.motivo); }).catch(function () { end(true, 'sin_senal'); });
+  }
+  function claimMsg(m) {
+    return m === 'en_uso' ? 'Ese número ya está en uso en otro celular. Revisa tu tarjeta o pide ayuda al equipo.'
+      : m === 'numero_invalido' ? 'Ese número no es válido. Revisa tu tarjeta.' : 'No pudimos verificar tu número. Intenta de nuevo.';
+  }
+  try { pid = cleanNum(new URLSearchParams(location.search).get('n')); } catch (e) {}
+  if (!pid) { try { pid = cleanNum(sessionStorage.getItem('pid')); } catch (e) {} }
+
+  var me = { age: null, picks: {} };   // picks['pregunta|respuesta'] = true
+  var restoring = false, reg = {}, sentList = [];
+  var step = 0;
+
+  /* ---------- Envío en tiempo real, con cola por si se corta la señal ---------- */
+  var queue = [];
+  try { queue = JSON.parse(localStorage.getItem('cola') || '[]'); } catch (e) {}
+  var toastEl = document.getElementById('toast'), toastT = 0;
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.classList.add('on');
+    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('on'); }, 1600);
+  }
+  var estadoEl = document.getElementById('estado');
+  function estado(txt, fallo) { estadoEl.textContent = txt; estadoEl.className = fallo ? 'fallo' : ''; }
+  function send(pregunta, respuesta, accion) {
+    if (restoring) return;   // al recuperar lo ya respondido no se vuelve a enviar nada
+    queue.push({ id: pid, edad: me.age === null ? '' : AGES[me.age].label, pregunta: pregunta, respuesta: respuesta, accion: accion });
+    try { localStorage.setItem('cola', JSON.stringify(queue)); } catch (e) {}
+    flush();
+  }
+  var flushing = false;
+  function flush() {
+    if (flushing || !queue.length) return;
+    if (!FORM.url) {   // modo prueba: no envía, solo muestra lo que se enviaría
+      var last = queue[queue.length - 1];
+      toast('Prueba: se enviaría «' + last.respuesta + '»');
+      queue = []; try { localStorage.setItem('cola', '[]'); } catch (e) {}
+      return;
+    }
+    flushing = true; estado('Enviando…');
+    var row = queue[0], body = new URLSearchParams();
+    Object.keys(FORM.fields).forEach(function (k) { body.append(FORM.fields[k], row[k]); });
+    fetch(FORM.url, { method: 'POST', mode: 'no-cors', body: body }).then(function () {
+      queue.shift(); try { localStorage.setItem('cola', JSON.stringify(queue)); } catch (e) {}
+      flushing = false; if (!queue.length) estado('Enviado ✓'); flush();
+    }).catch(function () {
+      flushing = false; estado('Sin señal: se enviará apenas vuelva', true); toast('Sin señal: se enviará apenas vuelva');
+      setTimeout(flush, 4000);
+    });
+  }
+  window.addEventListener('online', flush);
+  document.getElementById('testmode').textContent = FORM.url ? '' : 'Modo prueba: todavía no está conectado al formulario.';
+
+  /* ---------- Dibujo: esferas y frascos donde cae tu pelotita ---------- */
+  var drawables = [];
+  function makeVessel(kind, opts) {
+    var c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true');
+    var W = kind === 'jar' ? 124 : 240, H = kind === 'jar' ? 200 : 240;
+    c.width = W; c.height = H;
+    var v = { kind: kind, canvas: c, W: W, H: H, balls: [], seed: ++seedN, pieces: [], mine: [], fresh: null };
+    if (kind === 'sphere' && opts && opts.counts) v.pieces = spread(opts.counts).map(function (a) { return { age: a }; });
+    drawables.push(v);
+    return v;
+  }
+  var seedN = 0;
+  function rng(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function spread(counts) {   // reparte los colores mezclados, siempre en el mismo orden
+    var out = [], left = counts.slice(), rnd = rng(42), n = left.reduce(function (a, b) { return a + b; }, 0);
+    while (n > 0) { var pick = rnd() * n, a = 0; while (pick >= left[a]) { pick -= left[a]; a++; } out.push(a); left[a]--; n--; }
+    return out;
+  }
+  function scaled(counts, max) {   // menos piezas en el celular, con la misma proporción de colores
+    var tot = counts.reduce(function (a, b) { return a + b; }, 0), k = Math.min(1, max / Math.max(tot, 1));
+    return counts.map(function (c) { return c ? Math.max(1, Math.round(c * k)) : 0; });
+  }
+  function dropBall(v, color) {
+    if (v.kind === 'sphere') {   // tu pieza aparece con ¡pop! y se suma al giro
+      v.pieces.push({ age: me.age, mine: true });
+      v.mine.push(v.pieces.length - 1);
+      v.fresh = { idx: v.pieces.length - 1, start: performance.now() };
+      return;
+    }
+    var floor = v.kind === 'jar' ? v.H - 31 : v.H * 0.5 + v.W * 0.42 - 16;
+    var x = v.W / 2 + (Math.random() - 0.5) * (v.kind === 'jar' ? 8 : 30);
+    v.balls.push({ x: x, y: -16, vy: 0, floor: floor, color: color, landed: false, land: 0, pop: 0, out: 0 });
+  }
+  function removeBall(v) {
+    if (v.kind === 'sphere') {
+      var ix = v.mine.pop();
+      if (ix != null) v.pieces[ix].out = performance.now();
+      return;
+    }
+    var b = v.balls[v.balls.length - 1];
+    if (b) b.out = performance.now();
+  }
+  function ball(ctx, x, y, r, color, sx, sy) {
+    ctx.fillStyle = 'rgba(43,36,32,0.18)';
+    ctx.beginPath(); ctx.ellipse(x + 1.5, y + 2.5, r * sx, r * sy, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.ellipse(x, y, r * sx, r * sy, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.ellipse(x - r * 0.32, y - r * 0.34, r * 0.28, r * 0.17, -0.6, 0, Math.PI * 2); ctx.fill();
+  }
+  function popRing(ctx, x, y, r, color, t) {
+    ctx.save();
+    ctx.globalAlpha = 1 - t; ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(x, y, r * (1.2 + 2.4 * t), 0, Math.PI * 2); ctx.stroke();
+    for (var j = 0; j < 8; j++) {
+      var an = j * Math.PI / 4 + 0.4, r1 = r * (1.8 + 2.2 * t), r2 = r1 + r * (1 - t);
+      ctx.beginPath(); ctx.moveTo(x + Math.cos(an) * r1, y + Math.sin(an) * r1);
+      ctx.lineTo(x + Math.cos(an) * r2, y + Math.sin(an) * r2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawSphere(v, now) {
+    var ctx = v.canvas.getContext('2d'), W = v.W, sec = now / 1000, r = W * 0.46, P = v.pieces, n = P.length, i;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, v.H);
+    ctx.translate(W / 2, v.H / 2);
+    var dir = v.seed % 2 ? 1 : -1, rot = v.seed * 1.7 + sec * 0.32 * (reduce ? 0.35 : 1) * dir, tilt = 0.28;
+    var cr = Math.cos(rot), sr = Math.sin(rot), ct = Math.cos(tilt), st = Math.sin(tilt);
+    var size = r * 0.088 * Math.max(0.5, Math.min(1, Math.sqrt(45 / Math.max(n, 1))));
+    var back = [], front = [], fresh = null;
+    for (i = 0; i < n; i++) {
+      var pc = P[i];
+      if (pc.out && now - pc.out > 260) continue;
+      var rnd = rng(v.seed * 7919 + i * 104729 + 13);
+      var uy = rnd() * 2 - 1, th = rnd() * Math.PI * 2, sxy = Math.sqrt(1 - uy * uy);
+      var ux = sxy * Math.cos(th), uz = sxy * Math.sin(th);
+      var x1 = ux * cr + uz * sr, z1 = -ux * sr + uz * cr;
+      var y2 = uy * ct - z1 * st, z2 = uy * st + z1 * ct;
+      var q = { x: r * 0.955 * x1, y: r * 0.955 * y2, nx: x1, ny: y2, nz: z2, color: AGES[pc.age].color, k: pc.mine ? 1.7 : 1, out: pc.out };
+      if (v.fresh && v.fresh.idx === i) fresh = q; else if (z2 < 0) back.push(q); else front.push(q);
+    }
+    function piece(q, k, alpha) {
+      if (q.out) { var to = (now - q.out) / 260; alpha *= 1 - to; k *= 1 + 0.5 * to; }
+      ctx.globalAlpha = alpha; ctx.fillStyle = q.color;
+      ctx.beginPath();
+      ctx.ellipse(q.x, q.y, size * k * Math.max(Math.abs(q.nz), 0.16), size * k, Math.atan2(q.ny, q.nx), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    back.forEach(function (q) { piece(q, 0.9 * q.k, 0.38); });          // cara de atrás, más tenue
+    ctx.globalAlpha = 1;                                                 // vidrio con volumen
+    var g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.05, 0, 0, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.55, 'rgba(255,253,248,0.18)'); g.addColorStop(1, 'rgba(43,36,32,0.14)');
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    front.forEach(function (q) { piece(q, q.k, 0.95); });                // cara de adelante
+    if (fresh) {                                                          // ¡pop!: crece con rebote y suelta chispas
+      var t = Math.min(1, (now - v.fresh.start) / 520), u = t - 1;
+      var kk = (0.3 + 0.7 * (1 + 3.4 * u * u * u + 2.4 * u * u) + 0.6 * (1 - t)) * fresh.k;
+      ctx.globalAlpha = 1 - t; ctx.strokeStyle = fresh.color; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(fresh.x, fresh.y, size * (1.2 + 3 * t) * 1.4, 0, Math.PI * 2); ctx.stroke();
+      for (var j = 0; j < 8; j++) {
+        var an = j * Math.PI / 4 + 0.4, r1 = size * (1.8 + 2.8 * t) * 1.4, r2 = r1 + size * (1 - t) * 1.4;
+        ctx.beginPath(); ctx.moveTo(fresh.x + Math.cos(an) * r1, fresh.y + Math.sin(an) * r1);
+        ctx.lineTo(fresh.x + Math.cos(an) * r2, fresh.y + Math.sin(an) * r2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1; ctx.fillStyle = fresh.color;
+      ctx.beginPath(); ctx.arc(fresh.x, fresh.y, size * kk, 0, Math.PI * 2); ctx.fill();
+      if (t >= 1) v.fresh = null;
+    }
+    ctx.globalAlpha = 1;                                                  // borde y brillos
+    ctx.strokeStyle = '#8F857A'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineCap = 'round';
+    ctx.lineWidth = r * 0.055; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.8, Math.PI * 1.12, Math.PI * 1.4); ctx.stroke();
+    ctx.lineWidth = r * 0.03; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.84, Math.PI * 0.12, Math.PI * 0.28); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  function drawVessel(v, now, dt) {
+    if (v.kind === 'sphere') { drawSphere(v, now); return; }
+    var ctx = v.canvas.getContext('2d'), W = v.W, H = v.H, sec = now / 1000;
+    ctx.clearRect(0, 0, W, H);
+    var cx = W / 2, cy = H / 2, R = W * 0.44;
+    // vidrio
+    ctx.save();
+    if (v.kind === 'jar') {
+      var x0 = 10, y0 = 18, w = W - 20, h = H - 26, rad = 18;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + h - rad); ctx.quadraticCurveTo(x0, y0 + h, x0 + rad, y0 + h);
+      ctx.lineTo(x0 + w - rad, y0 + h); ctx.quadraticCurveTo(x0 + w, y0 + h, x0 + w, y0 + h - rad); ctx.lineTo(x0 + w, y0);
+      ctx.fillStyle = 'rgba(255,253,248,0.9)'; ctx.fill();
+      ctx.strokeStyle = '#8F857A'; ctx.lineWidth = 3; ctx.stroke();
+    } else {
+      var g = ctx.createRadialGradient(cx - R * 0.3, cy - R * 0.35, R * 0.05, cx, cy, R);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.6, 'rgba(255,253,248,0.6)'); g.addColorStop(1, 'rgba(43,36,32,0.12)');
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+      if (v.confetti) {   // confeti suave del color de la edad, girando
+        var col = v.confetti, rot = v.seed + sec * 0.5;
+        for (var i = 0; i < 26; i++) {
+          var a = i * 2.399 + rot, rr = R * 0.82 * Math.sqrt((i + 0.5) / 26), z = Math.cos(a * 1.3);
+          ctx.globalAlpha = z > 0 ? 0.9 : 0.35; ctx.fillStyle = col;
+          ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.9, R * 0.06 * Math.max(0.2, Math.abs(z)), R * 0.06, a, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = '#8F857A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+    // pelotitas
+    var br = v.kind === 'jar' ? 22 : R * 0.17, G = 2600;
+    for (var k = v.balls.length - 1; k >= 0; k--) {
+      var b = v.balls[k];
+      if (b.out) {   // se va con un pop al quitar
+        var to = (now - b.out) / 260;
+        if (to >= 1) { v.balls.splice(k, 1); continue; }
+        ctx.globalAlpha = 1 - to; ball(ctx, b.x, b.y, br * (1 + 0.4 * to), b.color, 1, 1); ctx.globalAlpha = 1;
+        continue;
+      }
+      var fl = b.floor - k * br * 1.9;   // si hay varias, se apilan
+      if (!b.landed) {
+        b.vy += G * dt; b.y += b.vy * dt;
+        if (b.y >= fl) {
+          b.y = fl; b.land = now; if (!b.pop) b.pop = now;
+          if (b.vy > 500 && !reduce) b.vy = -b.vy * 0.32; else { b.landed = true; b.vy = 0; }
+        }
+      }
+      var tb = b.land ? (now - b.land) / 1000 : 9, sq = Math.exp(-tb * 16);
+      var sx = 1 + 0.25 * sq, sy = 1 - 0.3 * sq;
+      ball(ctx, b.x, b.y + br * (1 - sy), br, b.color, sx, sy);
+      if (b.pop) { var tp = (now - b.pop) / 520; if (tp < 1) popRing(ctx, b.x, b.y, br, b.color, tp); }
+    }
+    // brillos
+    if (v.kind !== 'jar') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineCap = 'round'; ctx.lineWidth = R * 0.06;
+      ctx.beginPath(); ctx.arc(cx, cy, R * 0.8, Math.PI * 1.12, Math.PI * 1.4); ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineCap = 'round'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(24, 40); ctx.lineTo(24, H - 50); ctx.stroke();
+    }
+  }
+
+  /* ---------- Preguntas ---------- */
+  function option(container, kind, labelHtml, onTap, opts) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'opt' + (kind === 'jar' ? ' jar' : '');
+    b.setAttribute('aria-pressed', 'false');
+    var v = makeVessel(kind, opts);
+    if (kind === 'jar') { b.appendChild(v.canvas); b.insertAdjacentHTML('beforeend', '<span class="opt-label">' + labelHtml + '</span>'); }
+    else { b.insertAdjacentHTML('beforeend', '<span class="opt-label">' + labelHtml + '</span>'); b.appendChild(v.canvas); }
+    b.addEventListener('click', function () { onTap(b, v); });
+    container.appendChild(b);
+    return { btn: b, vessel: v };
+  }
+
+  // 1. Edad
+  var ageOpts = [];
+  AGES.forEach(function (a, i) {
+    ageOpts.push(option(document.getElementById('ages'), 'sphere',
+      '<span class="dot" style="--c:' + a.color + '"></span>' + a.txt, function (btn, v) { pickAge(i); }, { counts: AGE_IX.map(function (j) { return j === i && BASE.edad[i] ? Math.max(14, Math.round(70 * BASE.edad[i] / 311)) : 0; }) }));
+  });
+  function setVinculo(adult) {
+    var otro = adult ? 'vinculo|' : 'vinculo_juventud|';
+    Object.keys(me.picks).forEach(function (k) {   // lo marcado en la otra pregunta se quita, para que los datos no queden mezclados
+      if (k.indexOf(otro) !== 0 || !me.picks[k] || !reg[k]) return;
+      me.picks[k] = false; reg[k].btn.setAttribute('aria-pressed', 'false'); removeBall(reg[k].vessel);
+      send(k.slice(0, k.indexOf('|')), k.slice(k.indexOf('|') + 1), 'quita');
+    });
+    document.getElementById('q1').textContent = adult ? '¿Cómo te vinculas con la juventud?' : '¿Cuál es tu vínculo con Provi?';
+    document.getElementById('links').hidden = adult;
+    document.getElementById('links-adult').hidden = !adult;
+  }
+  function pickAge(i) {
+    if (me.age === i) return;
+    var had = me.age !== null;
+    ageOpts.forEach(function (o, j) {
+      o.btn.setAttribute('aria-pressed', String(j === i));
+      o.btn.style.setProperty('--sel', AGES[j].color);
+      if (j === me.age) removeBall(o.vessel);
+    });
+    me.age = i;
+    dropBall(ageOpts[i].vessel, AGES[i].color);
+    setVinculo(i === ADULT_IX);
+    // las pelotitas ya puestas cambian a tu nuevo color
+    drawables.forEach(function (v) {
+      v.balls.forEach(function (b) { b.color = AGES[i].color; });
+      v.mine.forEach(function (ix) { v.pieces[ix].age = i; });
+    });
+    send('edad', AGES[i].label, had ? 'cambia' : 'agrega');
+    var chip = document.getElementById('me-chip');
+    document.getElementById('me-dot').style.setProperty('--c', AGES[i].color);
+    document.getElementById('me-text').textContent = 'Tu color: ' + AGES[i].name;
+    chip.classList.add('on');
+    document.querySelectorAll('.opt').forEach(function (o) { o.style.setProperty('--sel', AGES[i].color); });
+    updateBar(); persist();
+  }
+
+  // 2, 3 y 4. Opciones múltiples
+  function multi(containerId, question, items, kind) {
+    items.forEach(function (label) {
+      var base = BASE[question] && BASE[question][label];
+      var o = option(document.getElementById(containerId), kind, label, function (btn, v) {
+        var key = question + '|' + label, on = !me.picks[key];
+        me.picks[key] = on;
+        btn.setAttribute('aria-pressed', String(on));
+        if (on) dropBall(v, AGES[me.age].color); else removeBall(v);
+        send(question, label, on ? 'agrega' : 'quita'); persist();
+      }, base ? { counts: scaled(base, 70) } : null);
+      reg[question + '|' + label] = o;
+    });
+  }
+  multi('links', 'vinculo', LINKS, 'sphere');
+  multi('links-adult', 'vinculo_juventud', ADULT_LINKS, 'jar');
+  multi('interests', 'intereses', INTERESTS, 'jar');
+  multi('contact', 'contacto', CONTACT, 'sphere');
+
+  // 5. Idea: se enciende una ampolleta de tu color
+  var bulbCv = document.getElementById('bulb'), bulbOn = 0, ideaCount = 0;
+  function drawBulb(now) {
+    if (bulbCv.offsetParent === null) return;
+    var ctx = bulbCv.getContext('2d'), W = 300, H = 380, cx = 150, cy = 150, R = 110;
+    ctx.clearRect(0, 0, W, H);
+    var lit = bulbOn ? Math.min(1, (now - bulbOn) / 400) : 0, col = me.age === null ? '#D9CDB8' : AGES[me.age].color;
+    if (lit > 0) {   // resplandor
+      var glow = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R * 1.45);
+      glow.addColorStop(0, 'rgba(255,204,51,' + (0.55 * lit) + ')'); glow.addColorStop(1, 'rgba(255,204,51,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, R * 1.45, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI * 0.78, Math.PI * 2.22);
+    ctx.lineTo(cx + R * 0.45, cy + R * 1.18); ctx.lineTo(cx - R * 0.45, cy + R * 1.18); ctx.closePath();
+    ctx.fillStyle = lit > 0 ? col : 'rgba(255,253,248,0.9)'; ctx.globalAlpha = lit > 0 ? 0.35 + 0.65 * lit : 1; ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = '#8F857A'; ctx.lineWidth = 4; ctx.stroke();
+    for (var i = 0; i < 4; i++) {   // casquillo
+      ctx.fillStyle = i % 2 ? '#5B5147' : '#8A8178';
+      ctx.fillRect(cx - R * 0.45, cy + R * 1.18 + i * 12, R * 0.9, 12);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineCap = 'round'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.75, Math.PI * 1.1, Math.PI * 1.4); ctx.stroke();
+    if (bulbOn) { var tp = (now - bulbOn) / 600; if (tp < 1) popRing(ctx, cx, cy, 34, col, tp); }
+  }
+  var ideaInput = document.getElementById('idea-text');
+  /* ---------- Votar por las ideas de los demás ---------- */
+  // En modo prueba se muestran ideas de ejemplo; conectado, se leen de la planilla cada 20 segundos.
+  var ideas = [], myVotes = {}, bumped = '', ideaOrder = null, mineIdeas = {};
+  function ideaKey(t) { return t.trim().toLowerCase(); }
+  function parseCsv(text) {
+    var rows = [], row = [], cell = '', q = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+  function loadIdeas() {
+    if (!FORM.sheetCsv) return;
+    var url = FORM.sheetCsv + (FORM.sheetCsv.indexOf('?') < 0 ? '?' : '&') + (/script\.google\.com|\/exec/.test(FORM.sheetCsv) ? 'n=' + encodeURIComponent(pid) + '&' : '') + 't=' + Date.now();
+    fetch(url).then(function (r) { return r.text(); }).then(function (text) {
+      if (text.charAt(0) === '{') {   // Apps Script: ya viene resumido y sin números de nadie (tus votos se suman aparte)
+        var notes = (JSON.parse(text).notes || {}).recomendaciones || [];
+        ideas = notes.map(function (n) {
+          return { text: n.text, age: n.age, votes: (n.votes || []).reduce(function (a, b) { return a + b; }, 0), mine: !!mineIdeas[ideaKey(n.text)] };
+        });
+        renderIdeas(); return;
+      }
+      var rows = parseCsv(text), head = rows.shift() || [], col = {};
+      head.forEach(function (h, i) { col[h.trim().toLowerCase()] = i; });
+      var ageOf = {}, list = {}, votes = {};
+      rows.forEach(function (rw) {
+        var id = rw[col.id], q = rw[col.pregunta], ans = (rw[col.respuesta] || '').trim(), act = rw[col.accion];
+        if (q === 'edad') ageOf[id] = AGES.map(function (a) { return a.label; }).indexOf(rw[col.edad]);
+        if (q === 'idea' && ans && !list[ideaKey(ans)]) list[ideaKey(ans)] = { text: ans, id: id };
+        if (q === 'voto' && ans && id !== pid) { var k = id + '|' + ideaKey(ans); votes[k] = act === 'agrega'; }   // los tuyos se suman aparte
+      });
+      var count = {};
+      Object.keys(votes).forEach(function (k) { if (votes[k]) { var t = k.slice(k.indexOf('|') + 1); count[t] = (count[t] || 0) + 1; } });
+      ideas = Object.keys(list).map(function (k) {
+        var it = list[k];
+        return { text: it.text, age: Math.max(0, ageOf[it.id] || 0), votes: count[k] || 0, mine: it.id === pid };
+      });
+      renderIdeas();
+    }).catch(function () { document.getElementById('vote-hint').textContent = 'No pudimos cargar las ideas. Revisa tu señal.'; });
+  }
+  function renderIdeas() {
+    var box = document.getElementById('bulbs');
+    if (!ideaOrder) ideaOrder = ideas.slice().sort(function (a, b) { return b.votes - a.votes; }).map(function (i) { return ideaKey(i.text); });
+    ideas.forEach(function (i) { if (ideaOrder.indexOf(ideaKey(i.text)) < 0) ideaOrder.unshift(ideaKey(i.text)); });
+    box.textContent = '';
+    ideaOrder.forEach(function (k) {
+      var it = null; ideas.forEach(function (i) { if (ideaKey(i.text) === k) it = i; });
+      if (!it) return;
+      var voted = !!myVotes[k], shown = it.votes + (voted ? 1 : 0);
+      var el = document.createElement('button'); el.type = 'button'; el.className = 'bulb' + (it.mine ? ' mine' : '');
+      el.setAttribute('aria-pressed', String(voted));
+      el.setAttribute('aria-label', it.text + ', ' + shown + (shown === 1 ? ' voto' : ' votos') + (voted ? ', ya votaste' : ''));
+      el.innerHTML = '<span class="glass"></span><span class="cap"></span><span class="votes' + (bumped === k ? ' bump' : '') + '"></span>';
+      var glass = el.querySelector('.glass');
+      glass.textContent = it.text;
+      glass.style.background = AGES[it.age].color;
+      glass.style.color = AGES[it.age].fg;
+      el.querySelector('.votes').textContent = shown;
+      el.addEventListener('click', function () {
+        if (me.age === null) return;
+        myVotes[k] = !myVotes[k]; bumped = myVotes[k] ? k : '';
+        send('voto', it.text, myVotes[k] ? 'agrega' : 'quita'); persist();
+        renderIdeas(); bumped = '';
+      });
+      box.appendChild(el);
+    });
+    if (!ideas.length) box.innerHTML = '<p class="hint" style="grid-column:1/-1">Todavía no hay ideas. ¡Sé la primera persona en compartir una!</p>';
+  }
+  setInterval(function () { if (step === 4) loadIdeas(); }, 20000);
+
+  function addSentIdea(text) {   // etiqueta de la idea enviada y su ampolleta en la lista
+    mineIdeas[ideaKey(text)] = true; ideaCount++; sentList.push(text);
+    var tag = document.createElement('span');
+    tag.textContent = text; tag.style.setProperty('--c', AGES[me.age].color);
+    tag.style.setProperty('--tc', AGES[me.age].fg);
+    document.getElementById('sent-ideas').appendChild(tag);
+    if (!ideas.some(function (i) { return ideaKey(i.text) === ideaKey(text); })) ideas.unshift({ text: text, age: me.age, votes: 0, mine: true });
+    document.getElementById('idea-send').textContent = 'Encender otra idea';
+  }
+  function sendIdea() {
+    var text = ideaInput.value.trim().replace(/[\u0000-\u001F\u007F]/g, ' ').slice(0, 30);
+    if (!text) { ideaInput.focus(); return; }
+    send('idea', text, 'agrega');
+    bulbOn = performance.now();
+    addSentIdea(text);
+    renderIdeas();
+    ideaInput.value = '';
+    updateBar(); persist();
+  }
+  document.getElementById('idea-send').addEventListener('click', sendIdea);
+  ideaInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); sendIdea(); } });
+
+  // Final: esfera con confeti de tu color
+  var finalCv = document.getElementById('final'), finalV = null;
+  function drawFinal(now, dt) {
+    if (finalCv.offsetParent === null || !finalV) return;
+    drawVessel(finalV, now, dt);
+    var ctx = finalCv.getContext('2d');
+    ctx.clearRect(0, 0, 440, 440);
+    ctx.drawImage(finalV.canvas, 0, 0, 440, 440);
+  }
+
+  /* ---------- Navegación ---------- */
+  var steps = document.querySelectorAll('.step'), back = document.getElementById('back'), next = document.getElementById('next');
+  function show(n) {
+    step = n;
+    if (n === 4) { renderIdeas(); loadIdeas(); }
+    steps.forEach(function (s) { s.classList.toggle('on', +s.dataset.step === n); });
+    document.querySelectorAll('#progress span').forEach(function (p, i) { p.classList.toggle('on', i <= Math.min(n, 4)); });
+    if (n === 5) {
+      finalV = makeVessel('sphere', { counts: AGE_IX.map(function (j) { return j === me.age ? 40 : 0; }) });
+      setTimeout(function () { dropBall(finalV, AGES[me.age].color); }, 300);
+    }
+    updateBar(); persist();
+    window.scrollTo(0, 0);
+  }
+  function updateBar() {
+    back.hidden = step === 0 || step === 5;
+    next.disabled = step === 0 && me.age === null;
+    next.textContent = step === 0 && me.age === null ? 'Elige tu edad para seguir' : step === 4 ? (ideaCount ? 'Terminar' : 'Terminar sin idea') : step === 5 ? 'Volver al inicio' : 'Siguiente';
+  }
+  next.addEventListener('click', function () {
+    if (step === 5) { try { sessionStorage.removeItem('pid'); localStorage.removeItem('qc-' + pid); } catch (e) {} location.href = location.pathname; return; }   // otra persona: pide su número
+    show(step + 1);
+  });
+  back.addEventListener('click', function () { show(Math.max(0, step - 1)); });
+  var gateNum = document.getElementById('gate-num'), gateErr = document.getElementById('gate-err');
+  /* ---------- Recuperar lo ya respondido ----------
+     Cada cambio se guarda en este mismo celular, con el número de la persona. Si recarga, se cierra la
+     pestaña o se acaba la batería, al volver a poner su número recupera sus opciones, sus ideas y la pantalla
+     donde iba, sin volver a enviar nada. En otro celular no se recupera: esas respuestas no se pueden pedir
+     al servidor sin dejar a la vista lo que respondió cada persona. */
+  function persist() {
+    if (restoring || !pid) return;
+    try { localStorage.setItem('qc-' + pid, JSON.stringify({ age: me.age, picks: me.picks, votes: myVotes, ideas: sentList, step: step, at: Date.now() })); } catch (e) {}
+  }
+  function recover() {
+    var sv = null; try { sv = JSON.parse(localStorage.getItem('qc-' + pid) || 'null'); } catch (e) {}
+    if (!sv || sv.age == null || !AGES[sv.age] || Date.now() - (sv.at || 0) > 18 * 3600 * 1000) return 0;
+    restoring = true;
+    pickAge(sv.age);
+    Object.keys(sv.picks || {}).forEach(function (k) {
+      if (!sv.picks[k] || !reg[k]) return;
+      me.picks[k] = true; reg[k].btn.setAttribute('aria-pressed', 'true'); dropBall(reg[k].vessel, AGES[me.age].color);
+    });
+    Object.keys(sv.votes || {}).forEach(function (k) { if (sv.votes[k]) myVotes[k] = true; });
+    (sv.ideas || []).forEach(function (t) { addSentIdea(String(t)); });
+    restoring = false;
+    return Math.min(Math.max(+sv.step || 0, 0), 5);
+  }
+  function enter(n) {
+    pid = n; try { sessionStorage.setItem('pid', pid); } catch (e) {}
+    document.body.classList.remove('needs-number');
+    document.getElementById('numtxt').textContent = 'Tu número: ' + pid;
+    var resume = recover(); show(resume);
+    if (resume > 0) toast('Recuperamos tus respuestas');
+  }
+  var gateBtn = document.getElementById('gate-go');
+  gateBtn.addEventListener('click', function () {
+    var n = cleanNum(gateNum.value);
+    if (!n) { gateErr.textContent = 'Escribe tu número, solo con dígitos.'; gateNum.focus(); return; }
+    gateErr.textContent = ''; gateBtn.disabled = true; gateBtn.textContent = 'Verificando…';
+    claim(n, function (ok, m) {
+      gateBtn.disabled = false; gateBtn.textContent = 'Empezar';
+      if (ok) enter(n); else { gateErr.textContent = claimMsg(m); gateNum.focus(); }
+    });
+  });
+  gateNum.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); document.getElementById('gate-go').click(); } });
+  flush();
+  document.body.classList.add('needs-number');
+  if (pid) {   // número que ya traía (enlace con ?n= o la misma pestaña): también se verifica
+    var pidIni = pid; pid = '';
+    claim(pidIni, function (ok, m) {
+      if (ok) enter(pidIni); else { try { sessionStorage.removeItem('pid'); } catch (e) {} gateNum.value = pidIni; gateErr.textContent = claimMsg(m); }
+    });
+  }
+
+  var last = 0;
+  (function tick(now) {
+    var dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+    drawables.forEach(function (v) { if (v.canvas.offsetParent !== null) drawVessel(v, now, dt); });
+    drawBulb(now); drawFinal(now, dt);
+    requestAnimationFrame(tick);
+  })(0);
+})();
+</script>
+</body>
+</html>
